@@ -1,13 +1,4 @@
 {
-  "version": 2,
   "buildCommand": "npm run build:client",
-  "outputDirectory": "dist/spa",
-  "framework": "vite",
-  "installCommand": "npm install",
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+  "outputDirectory": "dist/spa"
 }
