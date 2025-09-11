@@ -1,24 +1,13 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "dist/spa/**",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "dist/server/node-build.mjs",
-      "use": "@vercel/node"
-    }
-  ],
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "dist/spa",
+  "framework": "vite",
+  "installCommand": "npm install",
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/dist/server/node-build.mjs"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/dist/spa/$1"
+      "dest": "/index.html"
     }
-  ],
-  "outputDirectory": "dist/spa"
+  ]
 }
