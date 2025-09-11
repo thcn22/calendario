@@ -1,4 +1,12 @@
 {
   "buildCommand": "npm run build:client",
-  "outputDirectory": "dist/spa"
+  "outputDirectory": "dist/spa",
+  "installCommand": "npm install",
+  "framework": null,
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }
