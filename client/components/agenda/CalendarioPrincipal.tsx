@@ -10,10 +10,9 @@ import { EventoModal } from "./EventoModal";
 import { IgrejaModal } from "./IgrejaModal";
 import { AniversarioModal } from "./AniversarioModal";
 import { LembretesAniversarios } from "./LembretesAniversarios";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
+import { ExportarCalendarioPDF } from "./ExportarCalendarioPDF";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FileDown } from "lucide-react";
 
 type EventResource = { kind: 'evento'; data: Evento } | { kind: 'aniversario'; nome: string };
 
@@ -38,7 +37,9 @@ export default function CalendarioPrincipal() {
     return { inicio: startOfMonth(hoje), fim: endOfMonth(hoje) } as any;
   });
   const [modalIgreja, setModalIgreja] = useState(false);
+  const [igrejaEdicao, setIgrejaEdicao] = useState<Igreja | null>(null);
   const [modalAniversario, setModalAniversario] = useState(false);
+  const [modalExportarPDF, setModalExportarPDF] = useState(false);
   const [modo, setModo] = useState<"mes" | "anual">("mes");
   const [anoVisao, setAnoVisao] = useState<number>(new Date().getFullYear());
   const [mostrarApenasAniversarios, setMostrarApenasAniversarios] = useState(false);
@@ -148,264 +149,18 @@ export default function CalendarioPrincipal() {
 
   async function aoSalvar() {
     await carregarEventos();
-    // Recarregar aniversários também
+    // Recarregar aniversários do mês
     const mes = intervalo.inicio.getMonth() + 1;
     api.aniversariosPorMes(mes).then(setAniversariosMes);
-  }
-
-  function hexToRgb(hex: string) {
-    const h = hex.replace('#','');
-    const bigint = parseInt(h.length === 3 ? h.split('').map((c)=>c+c).join('') : h, 16);
-    const r = (bigint >> 16) & 255, g = (bigint >> 8) & 255, b = bigint & 255;
-    return { r, g, b };
-  }
-
-  async function exportarCalendarioMensal() {
-    const pdf = new jsPDF("l", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margem = 12;
-
-    // Título
-    pdf.setFontSize(18);
-    const titulo = `Calendário • ${format(intervalo.inicio, "MMMM 'de' yyyy", { locale: ptBR })}`;
-    pdf.text(titulo, margem, 18);
-
-    // Área do calendário
-    const headerH = 10;
-    const legendaH = 36; // espaço para legenda e resumo
-    const gridH = pageHeight - margem - legendaH - 24; // 24 espaço pós título
-    const gridTop = 24;
-    const gridLeft = margem;
-    const colW = (pageWidth - margem * 2) / 7;
-    const rowH = gridH / 6;
-
-    // Cabeçalho dos dias
-    pdf.setFillColor(245, 247, 250);
-    pdf.setDrawColor(224);
-    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    for (let c = 0; c < 7; c++) {
-      const x = gridLeft + c * colW;
-      pdf.rect(x, gridTop, colW, headerH, 'F');
-      pdf.setFontSize(11);
-      pdf.text(dias[c], x + 2, gridTop + 7);
+    // Se estiver na visão anual, recarregar todos os meses
+    if (modo === 'anual') {
+      const mapa: Record<number, AniversarianteOcorrencia[]> = {};
+      for (let m = 1; m <= 12; m++) {
+        // eslint-disable-next-line no-await-in-loop
+        mapa[m] = await api.aniversariosPorMes(m);
+      }
+      setAniversariosAno(mapa);
     }
-
-    // Datas
-    const inicioMes = startOfMonth(intervalo.inicio);
-    const inicioGrade = startOfWeek(inicioMes, { weekStartsOn: 0 });
-    const diasNoGrid = 42; // 6x7
-
-    pdf.setFontSize(9);
-
-    for (let i = 0; i < diasNoGrid; i++) {
-      const data = new Date(inicioGrade.getTime());
-      data.setDate(inicioGrade.getDate() + i);
-      const r = Math.floor(i / 7);
-      const c = i % 7;
-      const x = gridLeft + c * colW;
-      const y = gridTop + headerH + r * rowH;
-
-      // célula
-      pdf.setDrawColor(230);
-      pdf.rect(x, y, colW, rowH);
-
-      const inMonth = data.getMonth() === inicioMes.getMonth();
-      pdf.setTextColor(inMonth ? 20 : 160);
-      pdf.text(String(data.getDate()).padStart(2, '0'), x + colW - 6, y + 5, { align: 'right' as const });
-
-      // Itens do dia (eventos e aniversários)
-      const iniDia = new Date(data); iniDia.setHours(0,0,0,0);
-      const fimDia = new Date(data); fimDia.setHours(23,59,59,999);
-      const evs = eventos.filter((e) => new Date(e.dataHoraInicio) < fimDia && new Date(e.dataHoraFim) > iniDia);
-      const bds = aniversariosMes.filter((a) => a.dia === data.getDate() && a.mes === (data.getMonth()+1));
-      const itens: Array<{ tipo: 'ev'|'bd'; texto: string; cor?: {r:number;g:number;b:number} }> = [];
-      for (const ev of evs) {
-        const cor = igrejas.find((i)=> i.id === ev.igrejaId)?.codigoCor || '#16a34a';
-        const { r: rr, g, b } = hexToRgb(cor);
-        const hora = format(new Date(ev.dataHoraInicio), 'HH:mm');
-        itens.push({ tipo: 'ev', texto: `${hora} ${ev.titulo}`, cor: { r: rr, g, b } });
-      }
-      for (const bd of bds) {
-        itens.push({ tipo: 'bd', texto: `🎂 ${bd.nome}` });
-      }
-
-      let ey = y + 10;
-      pdf.setFontSize(7.5);
-      for (const it of itens.slice(0, 4)) { // máx 4 por célula
-        if (it.tipo === 'ev' && it.cor) {
-          pdf.setFillColor(it.cor.r, it.cor.g, it.cor.b);
-          pdf.circle(x + 3.5, ey - 2.2, 1.5, 'F');
-          const lines = pdf.splitTextToSize(it.texto, colW - 10);
-          pdf.setTextColor(40);
-          pdf.text(lines, x + 7, ey);
-          ey += Math.min(lines.length, 2) * 4;
-        } else {
-          const lines = pdf.splitTextToSize(it.texto, colW - 6);
-          pdf.setTextColor(40);
-          pdf.text(lines, x + 4, ey);
-          ey += 4;
-        }
-        if (ey > y + rowH - 4) break;
-      }
-      if (itens.length > 4) {
-        pdf.setTextColor(120);
-        pdf.text(`+${itens.length - 4} mais`, x + 7, y + rowH - 3);
-      }
-    }
-
-    // Legenda
-    let legendY = gridTop + headerH + 6 * rowH + 8;
-    pdf.setFontSize(12);
-    pdf.setTextColor(20);
-    pdf.text('Legenda', margem, legendY);
-    legendY += 6;
-    pdf.setFontSize(10);
-    for (const ig of igrejas.slice(0, 8)) {
-      const { r, g, b } = hexToRgb(ig.codigoCor || '#16a34a');
-      pdf.setFillColor(r, g, b);
-      pdf.rect(margem, legendY - 4, 4, 4, 'F');
-      pdf.setTextColor(50);
-      pdf.text(ig.nome, margem + 8, legendY);
-      legendY += 6;
-    }
-
-    // Resumo
-    let y = legendY + 4;
-    pdf.setFontSize(12);
-    pdf.setTextColor(20);
-    pdf.text('Resumo do mês', margem, y);
-    y += 6;
-    pdf.setFontSize(10);
-    const ordenados = [...eventos].sort((a,b)=> new Date(a.dataHoraInicio).getTime()-new Date(b.dataHoraInicio).getTime());
-    for (const ev of ordenados) {
-      const dataTxt = format(new Date(ev.dataHoraInicio), 'dd/MM HH:mm');
-      const linha = `${dataTxt} – ${ev.titulo}${ev.descricao ? `: ${ev.descricao}` : ''}`;
-      const linhas = pdf.splitTextToSize(linha, pageWidth - margem*2);
-      if (y + linhas.length * 5 > pageHeight - margem) { pdf.addPage(); y = margem; }
-      pdf.setTextColor(60);
-      pdf.text(linhas, margem, y);
-      y += linhas.length * 5 + 2;
-    }
-
-    pdf.save('calendario-mensal.pdf');
-  }
-
-  async function exportarResumoAnual() {
-    const ano = new Date().getFullYear();
-    const eventosAno: Evento[] = [];
-    const aniversariosMapa: Record<number, { dia: number; nomes: string[] }[]> = {};
-
-    for (let m = 0; m < 12; m++) {
-      const ini = new Date(ano, m, 1);
-      const fim = endOfMonth(ini);
-      const parte = await api.listarEventos(ini.toISOString(), fim.toISOString());
-      eventosAno.push(...parte);
-      const bds = await api.aniversariosPorMes(m + 1);
-      const porDia = new Map<number, string[]>();
-      for (const b of bds) {
-        porDia.set(b.dia, [...(porDia.get(b.dia) || []), b.nome]);
-      }
-      aniversariosMapa[m + 1] = Array.from(porDia.entries()).map(([dia, nomes]) => ({ dia, nomes: nomes.sort() })).sort((a,b)=>a.dia-b.dia);
-    }
-
-    const porData = new Map<string, { data: Date; qtdEventos: number; qtdBds: number }>();
-    for (const e of eventosAno) {
-      const d = new Date(e.dataHoraInicio);
-      const chave = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
-      const item = porData.get(chave) || { data: new Date(d.getFullYear(), d.getMonth(), d.getDate()), qtdEventos: 0, qtdBds: 0 };
-      item.qtdEventos += 1;
-      porData.set(chave, item);
-    }
-    for (let m = 1; m <= 12; m++) {
-      for (const b of aniversariosMapa[m] || []) {
-        const chave = new Date(ano, m-1, b.dia).toISOString().slice(0,10);
-        const item = porData.get(chave) || { data: new Date(ano, m-1, b.dia), qtdEventos: 0, qtdBds: 0 };
-        item.qtdBds += b.nomes.length;
-        porData.set(chave, item);
-      }
-    }
-
-    const linhas = Array.from(porData.values())
-      .sort((a,b)=>a.data.getTime()-b.data.getTime())
-      .map(({ data, qtdEventos, qtdBds }) => [
-        format(data, "dd/MM/yyyy"),
-        String(qtdBds),
-        String(qtdEventos)
-      ]);
-
-    const pdf = new jsPDF("p", "mm", "a4");
-    pdf.setFontSize(16);
-    pdf.text(`Resumo Anual ${ano} — Datas com eventos e aniversários`, 14, 16);
-    (pdf as any).autoTable({
-      startY: 22,
-      head: [["Data", "Aniversários", "Eventos"]],
-      body: linhas,
-      styles: { fontSize: 10, cellPadding: 3 },
-      headStyles: { fillColor: [24, 100, 171], textColor: 255 },
-      theme: 'grid',
-      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 40, halign: 'center' }, 2: { cellWidth: 40, halign: 'center' } },
-      margin: { left: 14, right: 14 }
-    });
-    pdf.save("resumo-anual.pdf");
-  }
-
-  async function exportarCalendarioAniversariosPDF() {
-    const pdf = new jsPDF("l", "mm", "a4");
-    const W = pdf.internal.pageSize.getWidth();
-    const H = pdf.internal.pageSize.getHeight();
-    const margem = 10;
-
-    pdf.setFontSize(18);
-    pdf.text("Calendário de Aniversários", margem, 16);
-
-    // Grid 3x4 de meses
-    const cols = 3, rows = 4;
-    const cellW = (W - margem * 2 - (cols - 1) * 6) / cols;
-    const cellH = (H - 22 - margem - (rows - 1) * 6) / rows; // 22 título
-
-    const nomesMeses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-
-    for (let m = 0; m < 12; m++) {
-      const r = Math.floor(m / cols);
-      const c = m % cols;
-      const x = margem + c * (cellW + 6);
-      const y = 20 + r * (cellH + 6);
-
-      // Caixa do mês
-      pdf.setDrawColor(220);
-      pdf.rect(x, y, cellW, cellH);
-      pdf.setFontSize(12);
-      pdf.text(nomesMeses[m], x + 4, y + 7);
-
-      // Buscar aniversários do mês
-      // Usa cache se já tiver em estado anual, senão busca da API
-      let lista = aniversariosAno[m+1];
-      if (!lista || lista.length === 0) {
-        try { lista = await api.aniversariosPorMes(m + 1); } catch { lista = []; }
-      }
-      const porDia = new Map<number, string[]>();
-      for (const a of (lista || [])) {
-        porDia.set(a.dia, [...(porDia.get(a.dia) || []), a.nome]);
-      }
-      const dias = Array.from(porDia.entries()).sort((a,b)=>a[0]-b[0]);
-
-      // Conteúdo: "DD: Nome, Nome"
-      pdf.setFontSize(9);
-      let yy = y + 12;
-      for (const [dia, nomes] of dias) {
-        const linha = `${String(dia).padStart(2,'0')}: ${nomes.sort().join(', ')}`;
-        const linhas = pdf.splitTextToSize(linha, cellW - 8);
-        for (const l of linhas) {
-          if (yy > y + cellH - 4) { break; }
-          pdf.text(l, x + 4, yy);
-          yy += 4;
-        }
-        if (yy > y + cellH - 4) break;
-      }
-    }
-
-    pdf.save("calendario-aniversarios.pdf");
   }
 
   const tituloMes = format(intervalo.inicio, "MMMM 'de' yyyy", { locale: ptBR });
@@ -445,18 +200,15 @@ export default function CalendarioPrincipal() {
           <h1 className="text-2xl font-semibold tracking-tight">{titulo}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={exportarCalendarioMensal} className="btn-premium">Exportar Calendário do Mês</button>
-          <button onClick={exportarResumoAnual} className="btn-premium">Exportar Resumo Anual</button>
-          <button onClick={exportarCalendarioAniversariosPDF} className="btn-premium">Exportar Aniversários (PDF)</button>
-          {(usuario?.perfil === "administrador") && (
-            <button onClick={() => setModalIgreja(true)} className="btn-premium">Nova Igreja</button>
-          )}
-          {(usuario?.perfil === "administrador" || usuario?.perfil === "lider") && (
-            <>
-              <button onClick={() => abrirCriacaoNaData(new Date())} className="btn-premium">Adicionar Atividade</button>
-              <button onClick={() => setModalAniversario(true)} className="btn-premium">Adicionar Aniversário</button>
-            </>
-          )}
+          <button onClick={() => setModalExportarPDF(true)} className="btn-premium bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800">
+            <FileDown className="h-4 w-4 mr-2 inline" />
+            Exportar PDF
+          </button>
+          <button onClick={() => setModalIgreja(true)} className="btn-premium">Nova Igreja</button>
+          <>
+            <button onClick={() => abrirCriacaoNaData(new Date())} className="btn-premium">Adicionar Atividade</button>
+            <button onClick={() => setModalAniversario(true)} className="btn-premium">Adicionar Aniversário</button>
+          </>
         </div>
       </div>
 
@@ -511,13 +263,35 @@ export default function CalendarioPrincipal() {
         <div className="space-y-4">
           <LembretesAniversarios />
           <AniversariantesWidget listaMes={aniversariosMes} mostrarApenasAniversarios={mostrarApenasAniversarios} onToggle={() => setMostrarApenasAniversarios(v=>!v)} />
-          <LegendaIgrejas igrejas={igrejas} />
+          <Igrejas 
+            igrejas={igrejas} 
+            onRecarregar={() => api.listarIgrejas().then(setIgrejas)}
+            podeEditar={true}
+            onEditarIgreja={(igreja) => {
+              console.log('[DEBUG] CalendarioPrincipal - editando igreja:', igreja);
+              setIgrejaEdicao(igreja);
+              setModalIgreja(true);
+            }}
+          />
         </div>
       </div>
 
       <EventoModal aberto={modalAberto} onFechar={() => setModalAberto(false)} evento={eventoSelecionado} dataInicial={dataInicialModal ?? undefined} onSalvo={aoSalvar} />
-      <IgrejaModal aberto={modalIgreja} onFechar={() => setModalIgreja(false)} onCriada={() => api.listarIgrejas().then(setIgrejas)} />
+      <IgrejaModal 
+        aberto={modalIgreja} 
+        onFechar={() => {
+          setModalIgreja(false);
+          setIgrejaEdicao(null);
+        }} 
+        onCriada={() => api.listarIgrejas().then(setIgrejas)} 
+        igreja={igrejaEdicao}
+      />
       <AniversarioModal aberto={modalAniversario} onFechar={() => setModalAniversario(false)} onSalvo={aoSalvar} />
+      <ExportarCalendarioPDF 
+        aberto={modalExportarPDF} 
+        onFechar={() => setModalExportarPDF(false)} 
+        igrejas={igrejas}
+      />
     </div>
   );
 }
@@ -530,7 +304,6 @@ function ItemCalendario({ event, igrejas }: { event: any; igrejas: Igreja[] }) {
         <TooltipTrigger asChild>
           <div className="relative group cursor-pointer">
             <div className="flex items-start gap-1.5 leading-tight">
-              <span className="mt-1">🎂</span>
               <div className="text-[11px]">
                 <div className="font-semibold truncate pr-2">Aniversário de {res.nome}</div>
                 <div className="opacity-90">dia inteiro</div>
@@ -539,7 +312,7 @@ function ItemCalendario({ event, igrejas }: { event: any; igrejas: Igreja[] }) {
           </div>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs">
-          <div className="text-sm font-medium mb-1">🎂 Aniversário</div>
+          <div className="text-sm font-medium mb-1">Aniversário</div>
           <div className="text-xs text-muted-foreground">{res.nome}</div>
         </TooltipContent>
       </Tooltip>
@@ -550,6 +323,12 @@ function ItemCalendario({ event, igrejas }: { event: any; igrejas: Igreja[] }) {
   const cor = igreja?.codigoCor || '#16a34a';
   const horaIni = format(new Date(ev.dataHoraInicio), 'HH:mm');
   const horaFim = format(new Date(ev.dataHoraFim), 'HH:mm');
+  const horarioComIgreja = igreja?.nome ? `${horaIni}–${horaFim} - ${igreja.nome}` : `${horaIni}–${horaFim}`;
+  
+  // Buscar departamento ou órgão vinculado
+  const departamento = ev.departamentoId && igreja?.departamentos?.find(d => d.id === ev.departamentoId);
+  const orgao = ev.orgaoId && igreja?.orgaos?.find(o => o.id === ev.orgaoId);
+  
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -558,15 +337,22 @@ function ItemCalendario({ event, igrejas }: { event: any; igrejas: Igreja[] }) {
             <span className="mt-1 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: cor }} />
             <div className="text-[11px]">
               <div className="font-semibold truncate pr-2">{ev.titulo}</div>
-              <div className="opacity-90">{horaIni}–{horaFim}</div>
+              <div className="opacity-90">{horarioComIgreja}</div>
+              {(departamento || orgao) && (
+                <div className="opacity-75 text-[10px] truncate">
+                  {departamento ? `${departamento.nome}` : `${orgao!.nome}`}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
-        <div className="text-sm font-medium mb-1" style={{ color: cor }}>{ev.titulo}</div>
-        <div className="text-xs text-muted-foreground mb-1">{horaIni}–{horaFim}{ev.diaInteiro ? ' • dia inteiro' : ''}</div>
+  <div className="text-sm font-medium mb-1" style={{ color: cor }}>{ev.titulo}</div>
+  <div className="text-xs text-muted-foreground mb-1">{horarioComIgreja}{ev.diaInteiro ? ' • dia inteiro' : ''}</div>
         {igreja?.nome && <div className="text-xs">Igreja: {igreja.nome}</div>}
+  {departamento && <div className="text-xs">Departamento: {departamento.nome}</div>}
+  {orgao && <div className="text-xs">Órgão: {orgao.nome}</div>}
         {ev.descricao && <div className="mt-1 text-xs leading-snug">{ev.descricao}</div>}
       </TooltipContent>
     </Tooltip>
@@ -614,15 +400,67 @@ function AniversariantesWidget({ listaMes, mostrarApenasAniversarios, onToggle }
   );
 }
 
-function LegendaIgrejas({ igrejas }: { igrejas: Igreja[] }) {
+function Igrejas({ igrejas, onRecarregar, podeEditar, onEditarIgreja }: { 
+  igrejas: Igreja[];
+  onRecarregar?: () => void;
+  podeEditar?: boolean;
+  onEditarIgreja?: (igreja: Igreja) => void;
+}) {
+  async function editarIgreja(igreja: Igreja) {
+    if (!podeEditar) return;
+    if (onEditarIgreja) {
+      onEditarIgreja(igreja);
+    } else {
+      const novoNome = prompt("Novo nome da igreja:", igreja.nome);
+      if (!novoNome || novoNome === igreja.nome) return;
+      
+      try {
+        await api.atualizarIgreja(igreja.id, { nome: novoNome });
+        onRecarregar?.();
+      } catch (err: any) {
+        alert("Erro ao atualizar igreja: " + err.message);
+      }
+    }
+  }
+
+  async function excluirIgreja(igreja: Igreja) {
+    if (!podeEditar) return;
+    if (!confirm(`Deseja excluir a igreja "${igreja.nome}"?`)) return;
+    
+    try {
+      await api.removerIgreja(igreja.id);
+      onRecarregar?.();
+    } catch (err: any) {
+      alert("Erro ao excluir igreja: " + err.message);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-border bg-card/90 p-4 shadow-lg ring-1 ring-black/5">
-      <h3 className="font-medium mb-2">Legenda</h3>
+  <h3 className="font-medium mb-2">Igrejas</h3>
       <ul className="space-y-2 text-sm">
         {igrejas.map((i) => (
-          <li key={i.id} className="flex items-center gap-2">
+          <li key={i.id} className="flex items-center gap-2 group">
             <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: i.codigoCor || "#16a34a" }} />
-            <span>{i.nome}</span>
+            <span className="flex-1">{i.nome}</span>
+            {podeEditar && (
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                <button
+                  onClick={() => editarIgreja(i)}
+                  className="p-1 rounded hover:bg-muted text-xs"
+                  title="Editar igreja"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => excluirIgreja(i)}
+                  className="p-1 rounded hover:bg-muted text-xs"
+                  title="Excluir igreja"
+                >
+                  🗑️
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -695,12 +533,18 @@ function MiniMes({ ano, mes, eventos, igrejas, aniversarios, mostrarApenasAniver
                 <TooltipContent className="max-w-xs">
                   <div className="text-xs font-medium mb-1">{format(d,'dd/MM')}</div>
                   <ul className="text-xs space-y-1">
-                    {doDiaEventos.map((ev) => (
-                      <li key={ev.id}>
-                        <span className="inline-block h-2 w-2 rounded-full mr-1 align-middle" style={{ backgroundColor: igrejas.find((i)=> i.id === ev.igrejaId)?.codigoCor || '#16a34a' }} />
-                        {format(new Date(ev.dataHoraInicio),'HH:mm')} – {ev.titulo}
-                      </li>
-                    ))}
+                    {doDiaEventos.map((ev) => {
+                      const igr = igrejas.find((i)=> i.id === ev.igrejaId);
+                      const dep = ev.departamentoId && igr?.departamentos?.find(d => d.id === ev.departamentoId);
+                      const org = ev.orgaoId && igr?.orgaos?.find(o => o.id === ev.orgaoId);
+                      return (
+                        <li key={ev.id}>
+                          <span className="inline-block h-2 w-2 rounded-full mr-1 align-middle" style={{ backgroundColor: igr?.codigoCor || '#16a34a' }} />
+                          {format(new Date(ev.dataHoraInicio),'HH:mm')} – {ev.titulo}
+                          {(dep || org) && <span className="text-[10px] opacity-70"> • {dep ? dep.nome : org!.nome}</span>}
+                        </li>
+                      );
+                    })}
                     {nb > 0 && (
                       <li>
                         <span className="inline-block h-2 w-2 rounded-full mr-1 align-middle" style={{ backgroundColor: '#f97316' }} />

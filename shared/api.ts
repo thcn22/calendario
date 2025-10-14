@@ -10,6 +10,20 @@ export interface Usuario {
   perfil: PerfilUsuario;
   igrejaId?: string | null;
   dataNascimento?: string | null; // ISO Date (yyyy-MM-dd)
+  departamentoId?: string | null;
+  orgaoId?: string | null;
+}
+
+export interface Departamento {
+  id: string;
+  nome: string;
+  igrejaId: string;
+}
+
+export interface Orgao {
+  id: string;
+  nome: string;
+  igrejaId: string;
 }
 
 export interface Igreja {
@@ -17,6 +31,8 @@ export interface Igreja {
   nome: string;
   endereco?: string | null;
   codigoCor?: string | null; // hexadecimal (ex: #3498db)
+  orgaos?: Orgao[];
+  departamentos?: Departamento[];
 }
 
 export type TipoRecurso = "espaco" | "equipamento";
@@ -32,12 +48,15 @@ export interface Evento {
   id: string;
   titulo: string;
   descricao?: string | null;
+  responsavel?: string | null;
   dataHoraInicio: string; // ISO
   dataHoraFim: string; // ISO
   criadoPor: string; // Usuario.id
   igrejaId: string;
   recursoId?: string | null;
   diaInteiro?: boolean;
+  departamentoId?: string | null;
+  orgaoId?: string | null;
 }
 
 export interface LoginRequisicao {
@@ -57,11 +76,14 @@ export interface ErroResposta {
 export interface CriarEventoDTO {
   titulo: string;
   descricao?: string | null;
+  responsavel?: string | null;
   dataHoraInicio: string;
   dataHoraFim: string;
   igrejaId: string;
   recursoId?: string | null;
   diaInteiro?: boolean;
+  departamentoId?: string | null;
+  orgaoId?: string | null;
 }
 
 export interface AtualizarEventoDTO extends Partial<CriarEventoDTO> {}
@@ -77,7 +99,11 @@ export interface AniversarianteOcorrencia {
   nome: string;
   dia: number; // 1-31
   mes: number; // 1-12
+  igrejaId: string;
+  departamentoId?: string | null;
+  orgaoId?: string | null;
 }
+
 
 export interface Aniversario {
   id: string;
@@ -88,12 +114,16 @@ export interface Aniversario {
   observacoes?: string | null;
   criadoPor: string; // Usuario.id
   igrejaId: string; // Igreja.id
+  departamentoId?: string | null;
+  orgaoId?: string | null;
 }
+
 
 export interface CriarAniversarioDTO {
   nome: string;
   dia: number;
   mes: number;
   ano?: number | null;
+  igrejaId?: string;
   observacoes?: string | null;
 }

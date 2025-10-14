@@ -28,7 +28,7 @@ export const exportarAniversarios = {
         const mes = nascimento.getMonth() + 1;
         const dataFormatada = format(nascimento, "dd/MM/yyyy", { locale: ptBR });
         
-        return `"${usuario.nome}","${usuario.email}","${dataFormatada}",${idade},${dia},${mes},"${usuario.perfil}"`;
+          return `"${usuario.nome}","${usuario.email}","${dataFormatada}",${idade},${dia},${mes},"${usuario.perfil || ''}"`;
       }).join("\n");
 
       const csvContent = cabecalho + dados;

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Evento, Igreja, Recurso } from "@shared/api";
+import { useEffect, useMemo, useState, useRef } from "react";
+import type { Evento, Igreja, Recurso, Departamento, Orgao } from "@shared/api";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { format } from "date-fns";
@@ -16,11 +16,15 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
   const { usuario } = useAuth();
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
+    const [responsavel, setResponsavel] = useState("");
   const [inicio, setInicio] = useState<string>("");
   const [fim, setFim] = useState<string>("");
   const [igrejaId, setIgrejaId] = useState<string>(usuario?.igrejaId ?? "");
   const [recursoId, setRecursoId] = useState<string>("");
   const [diaInteiro, setDiaInteiro] = useState(false);
+  const [tipoVinculo, setTipoVinculo] = useState<"" | "departamento" | "orgao">("");
+  const [departamentoId, setDepartamentoId] = useState<string>("");
+  const [orgaoId, setOrgaoId] = useState<string>("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -28,19 +32,42 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
   const [recursos, setRecursos] = useState<Recurso[]>([]);
 
   useEffect(() => {
+    // Carregar igrejas e recursos inicialmente
     api.listarIgrejas().then(setIgrejas);
     api.listarRecursos().then(setRecursos);
+
+    // Quando o modal for aberto, recarregar igrejas (caso tenha sido criada uma nova sem reload)
+    const onIgrejasChanged = () => api.listarIgrejas().then(setIgrejas);
+    window.addEventListener('igrejas:changed', onIgrejasChanged as EventListener);
+    return () => window.removeEventListener('igrejas:changed', onIgrejasChanged as EventListener);
   }, []);
 
   useEffect(() => {
     if (evento) {
       setTitulo(evento.titulo || "");
       setDescricao(evento.descricao || "");
+        setResponsavel(evento.responsavel || "");
       setInicio(evento.dataHoraInicio.substring(0, 16));
       setFim(evento.dataHoraFim.substring(0, 16));
       setIgrejaId(evento.igrejaId);
       setRecursoId(evento.recursoId || "");
       setDiaInteiro(Boolean(evento.diaInteiro));
+      
+      // Configurar tipo de vínculo e IDs
+      if (evento.departamentoId) {
+        setTipoVinculo("departamento");
+        setDepartamentoId(evento.departamentoId);
+        setOrgaoId("");
+      } else if (evento.orgaoId) {
+        setTipoVinculo("orgao");
+        setOrgaoId(evento.orgaoId);
+        setDepartamentoId("");
+      } else {
+        // Não zera os campos se já houver valores preenchidos
+        setTipoVinculo((prev) => prev || "");
+        setDepartamentoId((prev) => prev);
+        setOrgaoId((prev) => prev);
+      }
     } else {
       const base = dataInicial ?? new Date();
       const a = new Date(base);
@@ -51,14 +78,47 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
       setFim(format(b, "yyyy-MM-dd'T'HH:mm"));
       setTitulo("");
       setDescricao("");
+        setResponsavel("");
       setIgrejaId(usuario?.igrejaId ?? "");
       setRecursoId("");
       setDiaInteiro(false);
+      setTipoVinculo("");
+      setDepartamentoId("");
+      setOrgaoId("");
     }
     setErro(null);
   }, [evento, dataInicial, usuario?.igrejaId]);
 
-  const podeEditar = usuario && (usuario.perfil === "administrador" || usuario.perfil === "lider");
+  // Obter igreja selecionada para pegar departamentos e órgãos
+  const igrejaSelecionada = useMemo(() => 
+    igrejas.find(i => i.id === igrejaId), 
+    [igrejas, igrejaId]
+  );
+
+  // Limpar seleções quando igreja mudar, mas não ao abrir para edição
+  const prevIgrejaId = useRef<string>("");
+  useEffect(() => {
+    if (prevIgrejaId.current && prevIgrejaId.current !== igrejaId) {
+      setTipoVinculo("");
+      setDepartamentoId("");
+      setOrgaoId("");
+    }
+    prevIgrejaId.current = igrejaId;
+  }, [igrejaId]);
+
+  // Limpar ID quando tipo de vínculo mudar
+  useEffect(() => {
+    if (tipoVinculo === "departamento") {
+      setOrgaoId("");
+    } else if (tipoVinculo === "orgao") {
+      setDepartamentoId("");
+    } else {
+      setDepartamentoId("");
+      setOrgaoId("");
+    }
+  }, [tipoVinculo]);
+
+  const podeEditar = true; // Aplicação sem autenticação/roles: permitir edição por padrão
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -66,27 +126,24 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
     setSalvando(true);
     setErro(null);
     try {
+      const dadosEvento = {
+        titulo,
+        descricao,
+          responsavel,
+        dataHoraInicio: new Date(inicio).toISOString(),
+        dataHoraFim: new Date(fim).toISOString(),
+        igrejaId,
+        recursoId: recursoId || null,
+        diaInteiro,
+        departamentoId: tipoVinculo === "departamento" ? departamentoId || null : null,
+        orgaoId: tipoVinculo === "orgao" ? orgaoId || null : null,
+      };
+
       if (evento) {
-        const atualizado = await api.atualizarEvento(evento.id, {
-          titulo,
-          descricao,
-          dataHoraInicio: new Date(inicio).toISOString(),
-          dataHoraFim: new Date(fim).toISOString(),
-          igrejaId,
-          recursoId: recursoId || null,
-          diaInteiro,
-        });
+        const atualizado = await api.atualizarEvento(evento.id, dadosEvento);
         onSalvo?.(atualizado);
       } else {
-        const criado = await api.criarEvento({
-          titulo,
-          descricao,
-          dataHoraInicio: new Date(inicio).toISOString(),
-          dataHoraFim: new Date(fim).toISOString(),
-          igrejaId,
-          recursoId: recursoId || null,
-          diaInteiro,
-        });
+        const criado = await api.criarEvento(dadosEvento);
         onSalvo?.(criado);
       }
       onFechar();
@@ -127,6 +184,10 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
             <label className="block text-sm mb-1">Descrição</label>
             <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2" />
           </div>
+            <div>
+              <label className="block text-sm mb-1">Responsável</label>
+              <input value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2" placeholder="Nome do responsável" />
+            </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm mb-1">Início</label>
@@ -158,6 +219,60 @@ export function EventoModal({ aberto, onFechar, evento, dataInicial, onSalvo }: 
               </select>
             </div>
           </div>
+
+          {/* Vinculação com Departamento ou Órgão */}
+          {igrejaSelecionada && (igrejaSelecionada.departamentos?.length || igrejaSelecionada.orgaos?.length) ? (
+            <div className="border border-border rounded-lg p-3 space-y-3 bg-muted/30">
+              <label className="block text-sm font-medium">Vincular a (Opcional)</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs mb-1">Tipo</label>
+                  <select 
+                    value={tipoVinculo} 
+                    onChange={(e) => setTipoVinculo(e.target.value as "" | "departamento" | "orgao")} 
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Nenhum</option>
+                    {igrejaSelecionada.departamentos?.length ? <option value="departamento">Departamento</option> : null}
+                    {igrejaSelecionada.orgaos?.length ? <option value="orgao">Órgão</option> : null}
+                  </select>
+                </div>
+                
+                {tipoVinculo === "departamento" && igrejaSelecionada.departamentos && (
+                  <div>
+                    <label className="block text-xs mb-1">Departamento</label>
+                    <select 
+                      value={departamentoId} 
+                      onChange={(e) => setDepartamentoId(e.target.value)} 
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Selecione...</option>
+                      {igrejaSelecionada.departamentos.map((dep) => (
+                        <option key={dep.id} value={dep.id}>{dep.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
+                {tipoVinculo === "orgao" && igrejaSelecionada.orgaos && (
+                  <div>
+                    <label className="block text-xs mb-1">Órgão</label>
+                    <select 
+                      value={orgaoId} 
+                      onChange={(e) => setOrgaoId(e.target.value)} 
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Selecione...</option>
+                      {igrejaSelecionada.orgaos.map((org) => (
+                        <option key={org.id} value={org.id}>{org.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           <label className="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" checked={diaInteiro} onChange={(e) => setDiaInteiro(e.target.checked)} /> Dia inteiro
           </label>

@@ -21,33 +21,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function ProvedorAuth({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem("agenda_viva_token"));
-  const [usuario, setUsuario] = useState<UsuarioLogado | null>(() => {
-    const salvo = localStorage.getItem("agenda_viva_usuario");
-    return salvo ? JSON.parse(salvo) : null;
-  });
+  // Sem autenticação: não expor perfis. Retornamos usuario=null e funções no-op.
+  const entrar = async (_email: string, _senha: string) => { /* no-op */ };
+  const sair = () => { /* no-op */ };
 
-  useEffect(() => {
-    if (token) localStorage.setItem("agenda_viva_token", token);
-    else localStorage.removeItem("agenda_viva_token");
-  }, [token]);
-
-  useEffect(() => {
-    if (usuario) localStorage.setItem("agenda_viva_usuario", JSON.stringify(usuario));
-    else localStorage.removeItem("agenda_viva_usuario");
-  }, [usuario]);
-
-  async function entrar(email: string, senha: string) {
-    const resp = await api.login({ email, senha });
-    setToken(resp.token);
-    setUsuario(resp.usuario);
-  }
-  function sair() {
-    setToken(null);
-    setUsuario(null);
-  }
-
-  const value = useMemo(() => ({ token, usuario, estaAutenticado: !!token, entrar, sair }), [token, usuario]);
+  const value = useMemo(() => ({ token: null, usuario: null, estaAutenticado: true, entrar, sair }), []);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

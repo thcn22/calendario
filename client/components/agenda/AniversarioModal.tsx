@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,14 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import type { Igreja, Aniversario } from "@shared/api";
 
 interface AniversarioModalProps {
   aberto: boolean;
   onFechar: () => void;
   onSalvo: () => void;
+  aniversario?: Aniversario | null;
+  mesDefault?: number;
 }
 
 const meses = [
@@ -33,20 +36,39 @@ const meses = [
 
 const dias = Array.from({ length: 31 }, (_, i) => i + 1);
 
-export function AniversarioModal({ aberto, onFechar, onSalvo }: AniversarioModalProps) {
+export function AniversarioModal({ aberto, onFechar, onSalvo, aniversario, mesDefault }: AniversarioModalProps) {
   const [nome, setNome] = useState("");
   const [dia, setDia] = useState<number | null>(null);
-  const [mes, setMes] = useState<number | null>(null);
+  const [mes, setMes] = useState<number | null>(mesDefault ?? null);
   const [ano, setAno] = useState<number | null>(null);
+  const [igrejaId, setIgrejaId] = useState<string>("");
   const [observacoes, setObservacoes] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [igrejas, setIgrejas] = useState<Igreja[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (aberto) {
+      api.listarIgrejas().then(setIgrejas);
+      if (aniversario) {
+        setNome(aniversario.nome);
+        setDia(aniversario.dia);
+        setMes(aniversario.mes);
+        setAno(aniversario.ano || null);
+        setIgrejaId(aniversario.igrejaId || "");
+        setObservacoes(aniversario.observacoes || "");
+      } else {
+        setMes(mesDefault ?? null);
+      }
+    }
+  }, [aberto, aniversario, mesDefault]);
 
   const resetForm = () => {
     setNome("");
     setDia(null);
     setMes(null);
     setAno(null);
+    setIgrejaId("");
     setObservacoes("");
   };
 
@@ -88,18 +110,37 @@ export function AniversarioModal({ aberto, onFechar, onSalvo }: AniversarioModal
     setEnviando(true);
 
     try {
-      await api.criarAniversario({
-        nome: nome.trim(),
-        dia,
-        mes,
-        ano: ano || null,
-        observacoes: observacoes.trim() || null,
-      });
+      if (aniversario) {
+        // Modo edição
+        await api.atualizarAniversario(aniversario.id, {
+          nome: nome.trim(),
+          dia,
+          mes,
+          ano: ano || null,
+          igrejaId: igrejaId || undefined,
+          observacoes: observacoes.trim() || null,
+        });
 
-      toast({
-        title: "Sucesso",
-        description: "Aniversário adicionado com sucesso!",
-      });
+        toast({
+          title: "Sucesso",
+          description: "Aniversário atualizado com sucesso!",
+        });
+      } else {
+        // Modo criação
+        await api.criarAniversario({
+          nome: nome.trim(),
+          dia,
+          mes,
+          ano: ano || null,
+          igrejaId: igrejaId || undefined,
+          observacoes: observacoes.trim() || null,
+        });
+
+        toast({
+          title: "Sucesso",
+          description: "Aniversário adicionado com sucesso!",
+        });
+      }
 
       handleFechar();
       onSalvo();
@@ -121,7 +162,7 @@ export function AniversarioModal({ aberto, onFechar, onSalvo }: AniversarioModal
     <Dialog open={aberto} onOpenChange={handleFechar}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Adicionar Aniversário</DialogTitle>
+          <DialogTitle>{aniversario ? "Editar Aniversário" : "Adicionar Aniversário"}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
@@ -132,6 +173,22 @@ export function AniversarioModal({ aberto, onFechar, onSalvo }: AniversarioModal
               onChange={(e) => setNome(e.target.value)}
               placeholder="Nome da pessoa"
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Igreja</Label>
+            <Select value={igrejaId} onValueChange={setIgrejaId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a igreja" />
+              </SelectTrigger>
+              <SelectContent>
+                {igrejas.map((igreja) => (
+                  <SelectItem key={igreja.id} value={igreja.id}>
+                    {igreja.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

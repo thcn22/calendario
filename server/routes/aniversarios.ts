@@ -8,33 +8,36 @@ export const listarAniversarios: RequestHandler = (_req, res) => {
 };
 
 export const criarAniversario: RequestHandler = (req, res) => {
-  const { nome, dia, mes, ano, observacoes } = req.body as CriarAniversarioDTO;
+  const { nome, dia, mes, ano, igrejaId, observacoes } = req.body as CriarAniversarioDTO;
   const usuario = (req as any).usuario;
-  
+  // Permitir criar mesmo sem autenticação
+  const criadoPor = usuario?.id || "anon";
+  const igrejaIdFinal = igrejaId || usuario?.igrejaId || "default";
+
   if (!nome || !dia || !mes) {
     return res.status(400).json({ erro: "Nome, dia e mês são obrigatórios" });
   }
-  
+
   if (dia < 1 || dia > 31 || mes < 1 || mes > 12) {
     return res.status(400).json({ erro: "Dia deve estar entre 1-31 e mês entre 1-12" });
   }
-  
+
   const novo = aniversariosDb.criar({
     nome: nome.trim(),
     dia,
     mes,
     ano: ano || null,
     observacoes: observacoes?.trim() || null,
-    criadoPor: usuario.id,
-    igrejaId: usuario.igrejaId // Usar a igreja do usuário logado
+    criadoPor,
+    igrejaId: igrejaIdFinal
   });
-  
+
   return res.status(201).json(novo);
 };
 
 export const atualizarAniversario: RequestHandler = (req, res) => {
   const { id } = req.params as { id: string };
-  const { nome, dia, mes, ano, observacoes } = req.body as Partial<CriarAniversarioDTO>;
+  const { nome, dia, mes, ano, igrejaId, observacoes } = req.body as Partial<CriarAniversarioDTO>;
   
   const atual = aniversariosDb.buscarPorId(id);
   if (!atual) {
@@ -54,6 +57,7 @@ export const atualizarAniversario: RequestHandler = (req, res) => {
   if (dia !== undefined) dadosAtualizacao.dia = dia;
   if (mes !== undefined) dadosAtualizacao.mes = mes;
   if (ano !== undefined) dadosAtualizacao.ano = ano;
+  if (igrejaId !== undefined) dadosAtualizacao.igrejaId = igrejaId;
   if (observacoes !== undefined) dadosAtualizacao.observacoes = observacoes?.trim();
   
   const atualizado = aniversariosDb.atualizar(id, dadosAtualizacao);
@@ -84,7 +88,10 @@ export const aniversariosPorMes: RequestHandler = (req, res) => {
       id: a.id,
       nome: a.nome,
       dia: a.dia,
-      mes: a.mes
+      mes: a.mes,
+      igrejaId: a.igrejaId,
+      departamentoId: a.departamentoId || null,
+      orgaoId: a.orgaoId || null
     }));
   
   return res.json(aniversarios);

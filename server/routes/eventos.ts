@@ -37,31 +37,28 @@ export const listarEventos: RequestHandler = (req, res) => {
 };
 
 export const criarEvento: RequestHandler = (req, res) => {
-  const usuario = req.usuario!;
+  const usuario = req.usuario || null;
   const dados = req.body as CriarEventoDTO;
   
   if (!dados?.titulo || !dados?.dataHoraInicio || !dados?.dataHoraFim || !dados?.igrejaId) {
     return res.status(400).json({ erro: "Campos obrigatórios ausentes" });
   }
   
-  if (usuario.perfil === "membro") {
-    return res.status(403).json({ erro: "Permissão negada" });
-  }
-  
-  if (usuario.perfil === "lider" && usuario.igrejaId && usuario.igrejaId !== dados.igrejaId) {
-    return res.status(403).json({ erro: "Líder só pode criar eventos da sua igreja" });
-  }
+  // Permitir criação de eventos sem checagem de perfil (aplicação sem login/roles)
   
   const novo: Evento = {
     id: '', // será gerado automaticamente
     titulo: dados.titulo,
     descricao: dados.descricao ?? null,
+    responsavel: dados.responsavel ?? null,
     dataHoraInicio: new Date(dados.dataHoraInicio).toISOString(),
     dataHoraFim: new Date(dados.dataHoraFim).toISOString(),
-    criadoPor: usuario.id,
+    criadoPor: usuario?.id ?? 'local-dev',
     igrejaId: dados.igrejaId,
     recursoId: dados.recursoId ?? null,
     diaInteiro: Boolean(dados.diaInteiro),
+    departamentoId: dados.departamentoId ?? null,
+    orgaoId: dados.orgaoId ?? null,
   };
   
   const erro = validarConflitos(novo);
@@ -72,24 +69,19 @@ export const criarEvento: RequestHandler = (req, res) => {
 };
 
 export const atualizarEvento: RequestHandler = (req, res) => {
-  const usuario = req.usuario!;
+  const usuario = req.usuario || null;
   const { id } = req.params as { id: string };
   const dados = req.body as AtualizarEventoDTO;
   
   const atual = eventosDb.buscarPorId(id);
   if (!atual) return res.status(404).json({ erro: "Evento não encontrado" });
   
-  if (usuario.perfil === "membro") {
-    return res.status(403).json({ erro: "Permissão negada" });
-  }
-  
-  if (usuario.perfil === "lider" && usuario.igrejaId && usuario.igrejaId !== (dados.igrejaId ?? atual.igrejaId)) {
-    return res.status(403).json({ erro: "Líder só pode editar eventos da sua igreja" });
-  }
+  // Sem restrições de perfil para edição
   
   const editado: Evento = {
     ...atual,
     ...dados,
+    responsavel: dados.responsavel ?? atual.responsavel ?? null,
     dataHoraInicio: dados.dataHoraInicio ? new Date(dados.dataHoraInicio).toISOString() : atual.dataHoraInicio,
     dataHoraFim: dados.dataHoraFim ? new Date(dados.dataHoraFim).toISOString() : atual.dataHoraFim,
   };
@@ -102,20 +94,24 @@ export const atualizarEvento: RequestHandler = (req, res) => {
 };
 
 export const removerEvento: RequestHandler = (req, res) => {
-  const usuario = req.usuario!;
+  const usuario = req.usuario || null;
   const { id } = req.params as { id: string };
   
+  console.log(`[DEBUG] Tentativa de exclusão do evento ${id} pelo usuário ${usuario ? usuario.nome : 'anonimo'}`);
+  
   const atual = eventosDb.buscarPorId(id);
-  if (!atual) return res.status(404).json({ erro: "Evento não encontrado" });
-  
-  if (usuario.perfil === "membro") {
-    return res.status(403).json({ erro: "Permissão negada" });
+  if (!atual) {
+    console.log(`[DEBUG] Evento ${id} não encontrado`);
+    return res.status(404).json({ erro: "Evento não encontrado" });
   }
   
-  if (usuario.perfil === "lider" && usuario.igrejaId && usuario.igrejaId !== atual.igrejaId) {
-    return res.status(403).json({ erro: "Líder só pode excluir eventos da sua igreja" });
-  }
+  console.log(`[DEBUG] Evento encontrado: ${atual.titulo} da igreja ${atual.igrejaId}`);
   
-  eventosDb.deletar(id);
+  // Sem validações de perfil - exclusão permitida
+  
+  console.log(`[DEBUG] Excluindo evento ${id}`);
+  const resultado = eventosDb.deletar(id);
+  console.log(`[DEBUG] Resultado da exclusão: ${resultado}`);
+  
   return res.status(204).send();
 };

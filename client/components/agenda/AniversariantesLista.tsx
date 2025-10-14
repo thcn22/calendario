@@ -8,22 +8,26 @@ import { UserPlus, Calendar, Gift, Trash2, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Aniversariante, obterAniversariantesPorMes, obterTodosAniversariantes, removerAniversariante } from "./aniversariantes";
+import { AniversarioModal } from "./AniversarioModal";
+import { api } from "@/lib/api";
+import type { Aniversario } from "@shared/api";
 
 interface AniversariantesListaProps {
   mesAtual?: number;
 }
 
 export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
-  const [aniversarios, setAniversarios] = useState<Aniversariante[]>([]);
+  const [aniversarios, setAniversarios] = useState<Aniversario[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
+  const [mesDefault, setMesDefault] = useState<number | undefined>(undefined);
+  const [aniversarioEdicao, setAniversarioEdicao] = useState<Aniversario | null>(null);
   const { toast } = useToast();
 
-  const carregarAniversarios = () => {
+  const carregarAniversarios = async () => {
     try {
       setCarregando(true);
-      const dados = mesAtual ? obterAniversariantesPorMes(mesAtual) : obterTodosAniversariantes();
+      const dados = await api.listarAniversarios();
       setAniversarios(dados);
     } catch (error) {
       toast({
@@ -80,18 +84,14 @@ export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
     return Math.ceil(diferenca / (1000 * 60 * 60 * 24));
   };
 
-  const removerAniversarioLocal = (id: string, nome: string) => {
+  const removerAniversarioLocal = async (id: string, nome: string) => {
     try {
-      const sucesso = removerAniversariante(id);
-      if (sucesso) {
-        toast({
-          title: "Sucesso",
-          description: `Aniversário de ${nome} foi removido`,
-        });
-        carregarAniversarios();
-      } else {
-        throw new Error("Aniversário não encontrado");
-      }
+      await api.removerAniversario(id);
+      toast({
+        title: "Sucesso",
+        description: `Aniversário de ${nome} foi removido`,
+      });
+      carregarAniversarios();
     } catch (error) {
       toast({
         title: "Erro",
@@ -99,6 +99,16 @@ export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
         variant: "destructive",
       });
     }
+  };
+
+  const editarAniversario = (aniversario: Aniversario) => {
+    setAniversarioEdicao(aniversario);
+    setModalAberto(true);
+  };
+
+  const fecharModal = () => {
+    setModalAberto(false);
+    setAniversarioEdicao(null);
   };
 
   if (carregando) {
@@ -129,7 +139,7 @@ export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
               <Gift className="h-5 w-5" />
               Aniversariantes {mesAtual && `- ${format(new Date(2000, mesAtual - 1), 'MMMM', { locale: ptBR })}`}
             </CardTitle>
-            <Button onClick={() => setModalAberto(true)} size="sm">
+            <Button onClick={() => { setMesDefault(mesAtual); setModalAberto(true); }} size="sm">
               <UserPlus className="h-4 w-4 mr-2" />
               Adicionar
             </Button>
@@ -195,7 +205,7 @@ export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
                     <div className="flex items-center gap-2">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" onClick={() => editarAniversario(aniversario)}>
                             <Edit className="h-4 w-4" />
                           </Button>
                         </TooltipTrigger>
@@ -237,6 +247,14 @@ export function AniversariantesLista({ mesAtual }: AniversariantesListaProps) {
           )}
         </CardContent>
       </Card>
+      
+      <AniversarioModal 
+        aberto={modalAberto} 
+        onFechar={() => { fecharModal(); setMesDefault(undefined); }} 
+        onSalvo={carregarAniversarios}
+        aniversario={aniversarioEdicao}
+        mesDefault={mesDefault}
+      />
     </>
   );
 }

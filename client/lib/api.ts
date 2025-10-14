@@ -2,14 +2,8 @@ import type { AtualizarEventoDTO, CriarEventoDTO, Evento, Igreja, LoginRequisica
 
 const BASE = ""; // mesmo host
 
-function obterToken() {
-  return localStorage.getItem("agenda_viva_token");
-}
-
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = { "Content-Type": "application/json", ...(init?.headers || {}) };
-  const token = obterToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
   const resp = await fetch(`${BASE}${url}`, { ...init, headers });
   if (!resp.ok) {
     const txt = await resp.text();
@@ -17,14 +11,21 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
     try { msg = JSON.parse(txt)?.erro || msg; } catch {}
     throw new Error(msg || resp.statusText);
   }
+  
+  // Se a resposta for 204 (No Content) ou não tiver conteúdo, retorna undefined
+  if (resp.status === 204 || resp.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+  
   return resp.json();
 }
 
 export const api = {
-  login: (dados: LoginRequisicao) => req<LoginResposta>("/api/autenticacao/login", { method: "POST", body: JSON.stringify(dados) }),
-
+  // login removido - aplicação sem autenticação
   listarIgrejas: () => req<Igreja[]>("/api/igrejas"),
-  criarIgreja: (dados: { nome: string; endereco?: string | null; codigoCor?: string | null }) => req<Igreja>("/api/igrejas", { method: "POST", body: JSON.stringify(dados) }),
+  criarIgreja: (dados: { nome: string; endereco?: string | null; codigoCor?: string | null; orgaos?: string[] }) => req<Igreja>("/api/igrejas", { method: "POST", body: JSON.stringify(dados) }),
+  atualizarIgreja: (id: string, dados: { nome?: string; endereco?: string | null; codigoCor?: string | null; orgaos?: string[] }) => req<Igreja>(`/api/igrejas/${id}`, { method: "PUT", body: JSON.stringify(dados) }),
+  removerIgreja: (id: string) => req<void>(`/api/igrejas/${id}`, { method: "DELETE" }),
   listarRecursos: () => req<Recurso[]>("/api/recursos"),
   
   listarUsuarios: () => req<Usuario[]>("/api/usuarios"),

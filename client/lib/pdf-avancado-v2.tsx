@@ -364,10 +364,34 @@ export const RelatorioAniversariosPDF = ({ aniversariosData, igreja }: Relatorio
     aniversariosPorMes[i] = aniversarios.filter(a => a.mes === i);
   }
 
+  // Função para calcular idade
+  const calcularIdade = (ano?: number | null) => {
+    if (!ano) return null;
+    const hoje = new Date();
+    return hoje.getFullYear() - ano;
+  };
+
+  // Cabeçalho institucional fixo para todas as páginas
+  const HeaderInstitucional = () => (
+    <View style={{ marginBottom: 12, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#b45309', flexDirection: 'row', alignItems: 'center' }}>
+      {/* Logo (opcional) */}
+      <View style={{ width: 60, height: 60, marginRight: 12 }}>
+        {/* <Image src="/logo-igreja.png" style={{ width: 60, height: 60 }} /> */}
+      </View>
+      <View>
+        <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#b45309' }}>IGREJA EVANGÉLICA ASSEMBLEIA DE DEUS</Text>
+        <Text style={{ fontSize: 10, color: '#1d3557' }}>Rua: Jose Alencar, 17, Vila Torres Galvão, Paulista/PE - CEP: 53403-780</Text>
+        <Text style={{ fontSize: 10, color: '#1d3557' }}>Presidente PR. Roberto José Dos Santos Lucena</Text>
+        <Text style={{ fontSize: 10, color: '#1d3557' }}>Coordenador Da Área PR. Gilmar Ribeiro</Text>
+        <Text style={{ fontSize: 10, color: '#1d3557' }}>Coordenadora Da Área IR. Benezoete Ribeiro</Text>
+      </View>
+    </View>
+  );
+
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        {/* Header */}
+      <Page size="A4" style={styles.page} wrap>
+        <HeaderInstitucional />
         <View style={styles.header}>
           <Text style={styles.title}>
             Relatório de Aniversários
@@ -420,15 +444,16 @@ export const RelatorioAniversariosPDF = ({ aniversariosData, igreja }: Relatorio
             <View style={[styles.tableRow, styles.tableHeader]}>
               <Text style={styles.tableCellDate}>Data</Text>
               <Text style={styles.tableCellName}>Nome</Text>
+              <Text style={styles.tableCell}>Idade</Text>
               <Text style={styles.tableCell}>Observações</Text>
             </View>
-            
             {aniversarios.map((aniversario, index) => (
               <View key={index} style={styles.tableRow}>
                 <Text style={styles.tableCellDate}>
                   {aniversario.dia.toString().padStart(2, '0')}/{aniversario.mes.toString().padStart(2, '0')}
                 </Text>
                 <Text style={styles.tableCellName}>{aniversario.nome}</Text>
+                <Text style={styles.tableCell}>{aniversario.ano ? calcularIdade(aniversario.ano) : '-'}</Text>
                 <Text style={styles.tableCell}>{aniversario.observacoes || '-'}</Text>
               </View>
             ))}

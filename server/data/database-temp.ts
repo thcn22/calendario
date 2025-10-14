@@ -15,6 +15,8 @@ interface DatabaseData {
   aniversarios: any[];
   igrejas: any[];
   recursos: any[];
+  departamentos: any[];
+  orgaos: any[];
 }
 
 // Dados padrão
@@ -23,7 +25,9 @@ const dadosIniciais: DatabaseData = {
   eventos: [],
   aniversarios: [],
   igrejas: [],
-  recursos: []
+  recursos: [],
+  departamentos: [],
+  orgaos: []
 };
 
 // Carregar dados do arquivo
@@ -53,7 +57,72 @@ let dados = carregarDados();
 // Função para inicializar o banco (compatível com a interface SQLite)
 export function inicializarDatabase() {
   console.log('Database temporário inicializado (JSON)');
+  
+  // Inicializar usuários de teste se não existirem
+  if (dados.usuarios.length === 0) {
+    inicializarUsuariosTeste();
+  }
+  
   return true;
+}
+
+// Função para criar usuários de teste
+async function inicializarUsuariosTeste() {
+  try {
+    // Não criar igreja padrão automaticamente
+    let igrejaId = null;
+    
+    // Se não há igrejas, criar uma igreja de exemplo (opcional)
+    if (dados.igrejas.length === 0) {
+      const igrejaPadrao = {
+        id: Date.now().toString(),
+        nome: "Primeira Igreja",
+        endereco: "Endereço da Primeira Igreja",
+        codigoCor: "#16a34a",
+        criadoEm: new Date().toISOString()
+      };
+      dados.igrejas.push(igrejaPadrao);
+      igrejaId = igrejaPadrao.id;
+    } else {
+      igrejaId = dados.igrejas[0].id;
+    }
+
+    // Usuários de teste
+    const usuariosTeste = [
+      {
+        nome: "Administrador",
+        email: "admin@agendaviva.app",
+        senha: "admin123",
+        perfil: "administrador",
+        igrejaId: igrejaId,
+        dataNascimento: null
+      },
+      {
+        nome: "Líder Central",
+        email: "lider@central.app",
+        senha: "lider123",
+        perfil: "lider",
+        igrejaId: igrejaId,
+        dataNascimento: "1980-05-15"
+      },
+      {
+        nome: "Membro Jardim",
+        email: "membro@jardim.app",
+        senha: "membro123",
+        perfil: "membro",
+        igrejaId: igrejaId,
+        dataNascimento: "1990-08-20"
+      }
+    ];
+
+    for (const usuario of usuariosTeste) {
+      await usuariosDb.criar(usuario);
+    }
+
+    console.log('Usuários de teste criados com sucesso!');
+  } catch (error) {
+    console.error('Erro ao criar usuários de teste:', error);
+  }
 }
 
 // Usuários
@@ -114,12 +183,19 @@ export const eventosDb = {
     dados.eventos.find(e => e.id === id),
   
   buscarPorPeriodo: (inicio: string, fim: string) =>
-    dados.eventos.filter(e => e.data >= inicio && e.data <= fim),
+    dados.eventos.filter(e => {
+      const eventoInicio = new Date(e.dataHoraInicio);
+      const eventoFim = new Date(e.dataHoraFim);
+      const periodoInicio = new Date(inicio);
+      const periodoFim = new Date(fim);
+      return eventoInicio < periodoFim && eventoFim > periodoInicio;
+    }),
   
   criar: (evento: any) => {
     const id = Date.now().toString();
     const novoEvento = {
       ...evento,
+      responsavel: evento.responsavel ?? null,
       id,
       criadoEm: new Date().toISOString()
     };
@@ -132,6 +208,9 @@ export const eventosDb = {
     const index = dados.eventos.findIndex(e => e.id === id);
     if (index === -1) return null;
     dados.eventos[index] = { ...dados.eventos[index], ...dadosUpdate };
+    if (dadosUpdate.responsavel !== undefined) {
+      dados.eventos[index].responsavel = dadosUpdate.responsavel;
+    }
     salvarDados(dados);
     return dados.eventos[index];
   },
@@ -154,10 +233,7 @@ export const aniversariosDb = {
     dados.aniversarios.find(a => a.id === id),
   
   buscarPorMes: (mes: number) =>
-    dados.aniversarios.filter(a => {
-      const dataAniversario = new Date(a.dataAniversario);
-      return dataAniversario.getMonth() + 1 === mes;
-    }),
+    dados.aniversarios.filter(a => a.mes === mes),
   
   criar: (aniversario: any) => {
     const id = Date.now().toString();
@@ -259,5 +335,95 @@ export const recursosDb = {
     dados.recursos.splice(index, 1);
     salvarDados(dados);
     return true;
+  }
+};
+
+// Departamentos
+export const departamentosDb = {
+  todos: () => dados.departamentos,
+  buscarTodos: () => dados.departamentos,
+  
+  buscarPorId: (id: string) =>
+    dados.departamentos.find(d => d.id === id),
+  
+  buscarPorIgreja: (igrejaId: string) =>
+    dados.departamentos.filter(d => d.igrejaId === igrejaId),
+  
+  criar: (departamento: any) => {
+    const id = Date.now().toString() + Math.random();
+    const novoDepartamento = {
+      ...departamento,
+      id,
+      criadoEm: new Date().toISOString()
+    };
+    dados.departamentos.push(novoDepartamento);
+    salvarDados(dados);
+    return novoDepartamento;
+  },
+  
+  atualizar: (id: string, dadosUpdate: any) => {
+    const index = dados.departamentos.findIndex(d => d.id === id);
+    if (index === -1) return null;
+    dados.departamentos[index] = { ...dados.departamentos[index], ...dadosUpdate };
+    salvarDados(dados);
+    return dados.departamentos[index];
+  },
+  
+  deletar: (id: string) => {
+    const index = dados.departamentos.findIndex(d => d.id === id);
+    if (index === -1) return false;
+    dados.departamentos.splice(index, 1);
+    salvarDados(dados);
+    return true;
+  },
+  
+  deletarPorIgreja: (igrejaId: string) => {
+    dados.departamentos = dados.departamentos.filter(d => d.igrejaId !== igrejaId);
+    salvarDados(dados);
+  }
+};
+
+// Órgãos
+export const orgaosDb = {
+  todos: () => dados.orgaos,
+  buscarTodos: () => dados.orgaos,
+  
+  buscarPorId: (id: string) =>
+    dados.orgaos.find(o => o.id === id),
+  
+  buscarPorIgreja: (igrejaId: string) =>
+    dados.orgaos.filter(o => o.igrejaId === igrejaId),
+  
+  criar: (orgao: any) => {
+    const id = Date.now().toString() + Math.random();
+    const novoOrgao = {
+      ...orgao,
+      id,
+      criadoEm: new Date().toISOString()
+    };
+    dados.orgaos.push(novoOrgao);
+    salvarDados(dados);
+    return novoOrgao;
+  },
+  
+  atualizar: (id: string, dadosUpdate: any) => {
+    const index = dados.orgaos.findIndex(o => o.id === id);
+    if (index === -1) return null;
+    dados.orgaos[index] = { ...dados.orgaos[index], ...dadosUpdate };
+    salvarDados(dados);
+    return dados.orgaos[index];
+  },
+  
+  deletar: (id: string) => {
+    const index = dados.orgaos.findIndex(o => o.id === id);
+    if (index === -1) return false;
+    dados.orgaos.splice(index, 1);
+    salvarDados(dados);
+    return true;
+  },
+  
+  deletarPorIgreja: (igrejaId: string) => {
+    dados.orgaos = dados.orgaos.filter(o => o.igrejaId !== igrejaId);
+    salvarDados(dados);
   }
 };
