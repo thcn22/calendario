@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import { inicializarDatabase } from "./data/database-temp";
 import { autenticarToken } from "./middleware/auth";
 import { listarEventos, criarEvento, atualizarEvento, removerEvento } from "./routes/eventos";
@@ -146,6 +148,14 @@ export function createServer() {
 
   // Geração de PDF
   app.post("/api/gerar-pdf", gerarPDFCalendario);
+
+  // Servir arquivos estáticos do frontend (SPA)
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const spaPath = path.join(__dirname, '../../spa');
+  
+  console.log('Servindo arquivos estáticos de:', spaPath);
+  app.use(express.static(spaPath));
 
   return app;
 }

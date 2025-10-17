@@ -145,8 +145,8 @@ export function ExportarCalendarioPDF({ aberto, onFechar, igrejas }: ExportarCal
   const [igrejasFiltradas, setIgrejasFiltradas] = useState<string[]>([]);
   const [departamentosFiltrados, setDepartamentosFiltrados] = useState<string[]>([]);
   const [orgaosFiltrados, setOrgaosFiltrados] = useState<string[]>([]);
-  const [incluirAniversarios, setIncluirAniversarios] = useState(true);
-  const [apenasAniversarios, setApenasAniversarios] = useState(false);
+  // 0 = só eventos, 1 = só aniversários, 2 = ambos
+  const [tipoExportacao, setTipoExportacao] = useState<0 | 1 | 2>(0);
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
@@ -171,15 +171,15 @@ export function ExportarCalendarioPDF({ aberto, onFechar, igrejas }: ExportarCal
       const fim = tipo === "mensal" ? endOfMonth(dataBase) : endOfYear(dataBase);
 
       let eventos: Evento[] = [];
-      if (!apenasAniversarios) {
+      if (tipoExportacao !== 1) {
         eventos = await api.listarEventos(inicio.toISOString(), fim.toISOString());
         if (igrejasFiltradas.length > 0) eventos = eventos.filter((e) => igrejasFiltradas.includes(e.igrejaId));
         if (departamentosFiltrados.length > 0) eventos = eventos.filter((e) => e.departamentoId && departamentosFiltrados.includes(e.departamentoId));
         if (orgaosFiltrados.length > 0) eventos = eventos.filter((e) => e.orgaoId && orgaosFiltrados.includes(e.orgaoId));
       }
 
-    let aniversarios: Aniversario[] = [];
-      if (incluirAniversarios || apenasAniversarios) {
+      let aniversarios: Aniversario[] = [];
+      if (tipoExportacao !== 0) {
         let aniversariosCompletos = await api.listarAniversarios();
         if (tipo === "mensal") {
           aniversariosCompletos = aniversariosCompletos.filter(a => a.mes === mes);
@@ -853,24 +853,27 @@ export function ExportarCalendarioPDF({ aberto, onFechar, igrejas }: ExportarCal
           )}
 
           <div className="space-y-3">
-            <Label className="text-base font-semibold">Aniversários</Label>
+            <Label className="text-base font-semibold">O que exportar?</Label>
             <RadioGroup
-              value={apenasAniversarios ? 'apenas' : 'incluir'}
-              onValueChange={(v) => {
-                setApenasAniversarios(v === 'apenas');
-                setIncluirAniversarios(v === 'incluir');
-              }}
+              value={String(tipoExportacao)}
+              onValueChange={v => setTipoExportacao(Number(v) as 0 | 1 | 2)}
             >
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="incluir" id="incluir-aniversarios" />
-                <Label htmlFor="incluir-aniversarios" className="cursor-pointer text-sm">
-                  Incluir aniversários
+                <RadioGroupItem value="0" id="exportar-eventos" />
+                <Label htmlFor="exportar-eventos" className="cursor-pointer text-sm">
+                  Só eventos (calendário)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="apenas" id="apenas-aniversarios" />
-                <Label htmlFor="apenas-aniversarios" className="cursor-pointer text-sm">
-                  Exportar apenas aniversários
+                <RadioGroupItem value="1" id="exportar-aniversarios" />
+                <Label htmlFor="exportar-aniversarios" className="cursor-pointer text-sm">
+                  Só aniversários
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="2" id="exportar-ambos" />
+                <Label htmlFor="exportar-ambos" className="cursor-pointer text-sm">
+                  Eventos e aniversários
                 </Label>
               </div>
             </RadioGroup>

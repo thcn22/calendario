@@ -1,2 +1,10 @@
+ignoredBuiltDependencies:
+  - better-sqlite3
+  - core-js
+  - electron
+  - electron-winstaller
+  - esbuild
+  - puppeteer
+
 onlyBuiltDependencies:
   - '@swc/core'
