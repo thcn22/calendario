@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const base = path.join(__dirname, '..', 'dist', 'spa');
+// Use process.cwd() so the function resolves the build output path in Vercel runtime
+const base = path.join(process.cwd(), 'dist', 'spa');
 
 function contentType(file) {
   const ext = path.extname(file).toLowerCase();
